@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flying Game</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script src="https://cdn.jsdelivr.net/pygame/2.5.2/pygame.js"></script>
+    <script>
+        // Load the game
+        window.onload = function() {
+            // Initialize Pygame
+            pygame.init();
+            
+            // Create the game window
+            const screen = pygame.display.set_mode([800, 600]);
+            pygame.display.set_caption("Flying Game");
+            
+            // Game loop
+            function gameLoop() {
+                // Handle events
+                for (const event of pygame.event.get()) {
+                    if (event.type === pygame.QUIT) {
+                        return;
+                    }
+                }
+                
+                // Clear screen
+                screen.fill([255, 255, 255]);
+                
+                // Draw player
+                pygame.draw.rect(screen, [0, 0, 255], [400, 300, 50, 30]);
+                
+                // Update display
+                pygame.display.flip();
+                
+                // Continue the game loop
+                requestAnimationFrame(gameLoop);
+            }
+            
+            // Start the game
+            gameLoop();
+        };
+    </script>
+</body>
+</html> 
