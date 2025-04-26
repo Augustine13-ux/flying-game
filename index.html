@@ -13,47 +13,86 @@
         }
         canvas {
             border: 2px solid #333;
+            background-color: white;
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
-    <script src="https://cdn.jsdelivr.net/pygame/2.5.2/pygame.js"></script>
     <script>
-        // Load the game
-        window.onload = function() {
-            // Initialize Pygame
-            pygame.init();
-            
-            // Create the game window
-            const screen = pygame.display.set_mode([800, 600]);
-            pygame.display.set_caption("Flying Game");
-            
-            // Game loop
-            function gameLoop() {
-                // Handle events
-                for (const event of pygame.event.get()) {
-                    if (event.type === pygame.QUIT) {
-                        return;
-                    }
-                }
-                
-                // Clear screen
-                screen.fill([255, 255, 255]);
-                
-                // Draw player
-                pygame.draw.rect(screen, [0, 0, 255], [400, 300, 50, 30]);
-                
-                // Update display
-                pygame.display.flip();
-                
-                // Continue the game loop
-                requestAnimationFrame(gameLoop);
-            }
-            
-            // Start the game
-            gameLoop();
+        // Get the canvas and its context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game constants
+        const GRAVITY = 0.5;
+        const JUMP_POWER = -10;
+        const PLAYER_SPEED = 5;
+
+        // Player object
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            width: 50,
+            height: 30,
+            velocityY: 0,
+            speed: PLAYER_SPEED
         };
+
+        // Game state
+        let keys = {};
+
+        // Handle keyboard input
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ' && player.velocityY === 0) {
+                player.velocityY = JUMP_POWER;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Game loop
+        function gameLoop() {
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Move player
+            if (keys['ArrowLeft']) {
+                player.x -= player.speed;
+            }
+            if (keys['ArrowRight']) {
+                player.x += player.speed;
+            }
+
+            // Apply gravity
+            player.velocityY += GRAVITY;
+            player.y += player.velocityY;
+
+            // Keep player in bounds
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+            if (player.y < 0) {
+                player.y = 0;
+                player.velocityY = 0;
+            }
+            if (player.y > canvas.height - player.height) {
+                player.y = canvas.height - player.height;
+                player.velocityY = 0;
+            }
+
+            // Draw player
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+
+            // Continue the game loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start the game
+        gameLoop();
     </script>
 </body>
-</html> 
+</html>
