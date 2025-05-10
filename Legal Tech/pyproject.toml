@@ -3,6 +3,9 @@ name = "legal-tech"
 version = "0.1.0"
 description = "Legal Tech API with PDF processing capabilities"
 authors = ["Your Name <your.email@example.com>"]
+packages = [
+    { include = "app" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"
