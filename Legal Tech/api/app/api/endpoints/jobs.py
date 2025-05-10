@@ -32,48 +32,45 @@ async def get_rename_suggestions(job_id: str):
             raise HTTPException(status_code=404, detail="No PDF files found in job")
             
         # Generate suggestions for each PDF
-        suggestions = {}
-        for pdf_path in pdf_files:
-            suggested_name = renamer.suggest_filename(pdf_path)
-            suggestions[pdf_path.name] = suggested_name
+        suggestions = []
+        for pdf_file in pdf_files:
+            suggested_name = await renamer.suggest_filename(pdf_file)
+            suggestions.append({
+                "old_filename": pdf_file.name,
+                "new_filename": suggested_name
+            })
             
         return {"suggestions": suggestions}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/{job_id}/rename")
-async def apply_renames(job_id: str, rename_batch: RenameBatchRequest):
-    """Apply multiple file renames in a job."""
+async def batch_rename_files(job_id: str, request: RenameBatchRequest):
+    """Apply batch rename operations to files in a job."""
     try:
         job_dir = Path(settings.UPLOAD_DIR) / job_id
         if not job_dir.exists():
             raise HTTPException(status_code=404, detail="Job not found")
-
+            
         # Process each rename request
-        for rename in rename_batch.renames:
-            old_path = job_dir / rename.old_filename
-            new_path = job_dir / rename.new_filename
-
-            if not old_path.exists():
+        for rename in request.renames:
+            old_file = job_dir / rename.old_filename
+            new_file = job_dir / rename.new_filename
+            
+            if not old_file.exists():
                 raise HTTPException(
                     status_code=404,
                     detail=f"File not found: {rename.old_filename}"
                 )
-
+                
             # Rename the file
-            try:
-                old_path.rename(new_path)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to rename {rename.old_filename}: {str(e)}"
-                )
-
+            old_file.rename(new_file)
+            
         # Return updated file list
-        files = [f.name for f in job_dir.glob("*.pdf")]
-        return {"files": files}
-
+        return {
+            "message": "Files renamed successfully",
+            "files": [f.name for f in job_dir.glob("*.pdf")]
+        }
     except HTTPException:
         raise
     except Exception as e:
