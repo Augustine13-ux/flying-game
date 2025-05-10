@@ -1,9 +1,10 @@
 import re
+from datetime import datetime
 from typing import Optional
 import google.generativeai as genai
-from pathlib import Path
+from pdfplumber import open as pdf_open
 import pytesseract
-from pdf2image import convert_from_path
+from PIL import Image
 import io
 
 class RenamerService:
@@ -11,78 +12,74 @@ class RenamerService:
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel("gemini-pro")
         
-    def _extract_text_from_pdf(self, pdf_path: Path, max_chars: int = 500) -> str:
+    def _extract_text_from_pdf(self, pdf_path: str, max_chars: int = 500) -> str:
         """Extract text from PDF, using OCR if no text layer exists."""
         try:
-            # First try direct text extraction
-            import PyPDF2
-            with open(pdf_path, 'rb') as file:
-                reader = PyPDF2.PdfReader(file)
+            with pdf_open(pdf_path) as pdf:
                 text = ""
-                for page in reader.pages:
-                    text += page.extract_text()
+                for page in pdf.pages:
+                    text += page.extract_text() or ""
                     if len(text) >= max_chars:
                         break
-                if text.strip():
-                    return text[:max_chars]
-            
-            # If no text found, use OCR
-            images = convert_from_path(pdf_path)
-            text = ""
-            for image in images:
-                text += pytesseract.image_to_string(image)
-                if len(text) >= max_chars:
-                    break
-            return text[:max_chars]
+                
+                if not text.strip():
+                    # No text layer, try OCR on first page
+                    first_page = pdf.pages[0]
+                    img = first_page.to_image()
+                    text = pytesseract.image_to_string(img.original)
+                
+                return text[:max_chars]
         except Exception as e:
-            raise Exception(f"Failed to extract text from PDF: {str(e)}")
+            raise ValueError(f"Failed to extract text from PDF: {str(e)}")
 
     def _clean_filename(self, filename: str) -> str:
-        """Clean filename by removing forbidden characters and ensuring snake_case."""
-        # Remove forbidden filesystem characters
+        """Clean filename to be filesystem-safe."""
+        # Remove forbidden characters and convert to snake_case
         cleaned = re.sub(r'[<>:"/\\|?*]', '', filename)
-        # Convert to snake_case
-        cleaned = re.sub(r'[^a-zA-Z0-9]', '_', cleaned)
-        # Remove multiple underscores
-        cleaned = re.sub(r'_+', '_', cleaned)
-        # Remove leading/trailing underscores
-        cleaned = cleaned.strip('_')
-        return cleaned
+        cleaned = re.sub(r'\s+', '_', cleaned)
+        cleaned = re.sub(r'[^a-zA-Z0-9_-]', '', cleaned)
+        cleaned = re.sub(r'_+', '_', cleaned)  # Collapse multiple underscores
+        cleaned = cleaned.strip('_')  # Remove leading/trailing underscores
+        return cleaned.lower()
 
-    def _generate_filename_with_gemini(self, text: str) -> Optional[str]:
-        """Generate filename using Gemini AI."""
-        prompt = """You are an expert paralegal. Suggest a concise snake_case filename 
-        (max 60 chars) using YYYY-MM-DD + short descriptive title."""
-        
-        try:
-            response = self.model.generate_content(
-                prompt + "\n\nDocument text:\n" + text,
-                generation_config={"temperature": 0.2}
-            )
-            return self._clean_filename(response.text)
-        except Exception:
-            return None
-
-    def _fallback_filename(self, text: str) -> str:
-        """Generate fallback filename using regex pattern."""
-        # Try to find a date in YYYY-MM-DD format
-        date_match = re.search(r'\d{4}-\d{2}-\d{2}', text)
-        date = date_match.group(0) if date_match else "unknown-date"
-        
+    def _generate_fallback_name(self, text: str) -> str:
+        """Generate a fallback filename using regex pattern."""
+        # Try to find a date in the text
+        date_match = re.search(r'\d{4}[-/]\d{2}[-/]\d{2}', text)
+        date_str = date_match.group(0).replace('/', '-') if date_match else datetime.now().strftime('%Y-%m-%d')
         # Extract first few words as title
         words = re.findall(r'\b\w+\b', text)[:5]
-        title = '_'.join(words).lower()
-        
-        return f"{date}_{title}"
+        title = '_'.join(words)
+        fallback = f"{date_str}_{title}"
+        return self._clean_filename(fallback)
 
-    def suggest_filename(self, pdf_path: Path) -> str:
+    async def suggest_filename(self, pdf_path: str) -> str:
         """Generate a suggested filename for the PDF."""
-        text = self._extract_text_from_pdf(pdf_path)
-        
-        # Try Gemini first
-        suggested_name = self._generate_filename_with_gemini(text)
-        if suggested_name and len(suggested_name) <= 60:
+        try:
+            # Extract text from PDF
+            text = self._extract_text_from_pdf(pdf_path)
+            
+            # Build prompt for Gemini
+            prompt = f"""You are an expert paralegal. Suggest a concise snake_case filename (max 60 chars) using YYYY-MM-DD + short descriptive title for this document:
+
+{text}
+
+Respond with ONLY the filename, no explanation or additional text."""
+
+            # Get suggestion from Gemini
+            response = await self.model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.2}
+            )
+            
+            # Clean and validate the response
+            suggested_name = self._clean_filename(response.text)
+            if len(suggested_name) > 60:
+                suggested_name = suggested_name[:60]
+                
             return suggested_name
             
-        # Fallback to regex-based approach
-        return self._fallback_filename(text) 
+        except Exception as e:
+            # Fallback to regex-based naming
+            text = self._extract_text_from_pdf(pdf_path)
+            return self._generate_fallback_name(text) 

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 import zipfile
 import io
 from app.services.signature_detector import SignatureDetector
+from app.api.endpoints import rename
 
 app = FastAPI(
     title="Signature Toolkit API",
@@ -24,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(rename.router, prefix="/api", tags=["Rename"])
 
 # Create storage directory if it doesn't exist
 STORAGE_DIR = Path("./storage")
