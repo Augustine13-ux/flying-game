@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+
+      - name: Install dependencies
+        run: |
+          cd api
+          poetry install
+
+      - name: Run linters
+        run: |
+          cd api
+          poetry run ruff check .
+          poetry run black --check .
+
+      - name: Run tests
+        run: |
+          cd api
+          poetry run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd web
+          npm install
+
+      - name: Run ESLint
+        run: |
+          cd web
+          npm run lint
+
+      - name: Build
+        run: |
+          cd web
+          npm run build 
