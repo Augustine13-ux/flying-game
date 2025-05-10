@@ -1,10 +1,14 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from typing import List
 import uuid
 import os
 from pathlib import Path
 from pydantic import BaseModel
+import zipfile
+import io
+from app.services.signature_detector import SignatureDetector
 
 app = FastAPI(
     title="Signature Toolkit API",
@@ -71,4 +75,61 @@ async def upload_files(files: List[UploadFile] = File(...)):
         
         file_uuids.append(file_uuid)
     
-    return UploadResponse(job_id=job_id, files=file_uuids) 
+    return UploadResponse(job_id=job_id, files=file_uuids)
+
+@app.get("/api/job/{job_id}/download", tags=["Files"])
+async def download_signature_pages(job_id: str):
+    """
+    Download signature pages as a ZIP file containing PDF and PNG files.
+    
+    Args:
+        job_id: The job ID to download signature pages for
+        
+    Returns:
+        StreamingResponse: ZIP file containing signature pages
+    """
+    job_dir = STORAGE_DIR / job_id
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Create a memory buffer for the ZIP file
+    zip_buffer = io.BytesIO()
+    
+    # Create ZIP file in memory
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Process each PDF file in the job directory
+        for pdf_file in job_dir.glob("*.pdf"):
+            if pdf_file.name.endswith("_sigpages.pdf"):
+                continue  # Skip already processed files
+                
+            # Create output directory for this PDF
+            out_dir = job_dir / pdf_file.stem
+            out_dir.mkdir(exist_ok=True)
+            
+            # Extract signature pages
+            detector = SignatureDetector()
+            manifest = detector.extract_pages(pdf_file, out_dir)
+            
+            # Add files to ZIP
+            for page_info in manifest.values():
+                # Add PDF file
+                pdf_path = Path(page_info["pdf"])
+                if pdf_path.exists():
+                    zip_file.write(pdf_path, pdf_path.name)
+                
+                # Add PNG file
+                png_path = Path(page_info["png"])
+                if png_path.exists():
+                    zip_file.write(png_path, png_path.name)
+    
+    # Reset buffer position
+    zip_buffer.seek(0)
+    
+    # Return streaming response
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": "attachment; filename=signature_pages.zip"
+        }
+    ) 
