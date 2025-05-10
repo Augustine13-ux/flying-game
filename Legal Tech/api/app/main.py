@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from typing import List
+from typing import List, Dict
 import uuid
 import os
 from pathlib import Path
@@ -37,6 +37,11 @@ class UploadResponse(BaseModel):
     """Response model for file upload endpoint"""
     job_id: str
     files: List[str]
+
+class RenameRequest(BaseModel):
+    """Request model for file rename endpoint"""
+    old_filename: str
+    new_filename: str
 
 @app.get("/health")
 async def health_check():
@@ -136,4 +141,44 @@ async def download_signature_pages(job_id: str):
         headers={
             "Content-Disposition": "attachment; filename=signature_pages.zip"
         }
-    ) 
+    )
+
+@app.patch("/api/job/{job_id}/rename", tags=["Files"])
+async def rename_file(job_id: str, rename_request: RenameRequest):
+    """
+    Rename a file within a job.
+    
+    Args:
+        job_id: The job ID containing the file
+        rename_request: Contains old and new filenames
+        
+    Returns:
+        Dict: Updated file list
+    """
+    job_dir = STORAGE_DIR / job_id
+    if not job_dir.exists():
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Find the file with the old name
+    old_file = None
+    for file in job_dir.glob("*"):
+        if file.name.endswith(rename_request.old_filename):
+            old_file = file
+            break
+    
+    if not old_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Generate new filename with UUID prefix
+    file_uuid = old_file.name.split('_')[0]
+    new_file = job_dir / f"{file_uuid}_{rename_request.new_filename}"
+    
+    # Rename the file
+    try:
+        old_file.rename(new_file)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to rename file: {str(e)}")
+    
+    # Return updated file list
+    files = [f.name for f in job_dir.glob("*") if not f.name.endswith("_sigpages.pdf")]
+    return {"files": files} 

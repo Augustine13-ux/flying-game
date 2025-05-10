@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, PencilIcon } from '@heroicons/react/24/outline';
 
 interface FileManifest {
   id: string;
@@ -14,6 +14,8 @@ function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [manifest, setManifest] = useState<FileManifest[]>([]);
   const [isPolling, setIsPolling] = useState(false);
+  const [editingFile, setEditingFile] = useState<string | null>(null);
+  const [newFilename, setNewFilename] = useState("");
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const formData = new FormData();
@@ -83,6 +85,30 @@ function App() {
     }
   };
 
+  const handleRename = async (oldFilename: string, newFilename: string) => {
+    if (!jobId) return;
+    
+    try {
+      const response = await axios.patch(`/api/job/${jobId}/rename`, {
+        old_filename: oldFilename,
+        new_filename: newFilename
+      });
+      
+      // Update manifest with new filenames
+      const updatedManifest = manifest.map(file => {
+        if (file.filename === oldFilename) {
+          return { ...file, filename: newFilename };
+        }
+        return file;
+      });
+      setManifest(updatedManifest);
+      setEditingFile(null);
+      setNewFilename("");
+    } catch (error) {
+      console.error('Rename failed:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 py-6 flex flex-col justify-center sm:py-12">
       <div className="relative py-3 sm:max-w-xl sm:mx-auto">
@@ -114,7 +140,47 @@ function App() {
                             alt={file.filename}
                             className="w-full h-32 object-cover rounded"
                           />
-                          <p className="mt-2 text-sm truncate">{file.filename}</p>
+                          {editingFile === file.filename ? (
+                            <div className="mt-2">
+                              <input
+                                type="text"
+                                value={newFilename}
+                                onChange={(e) => setNewFilename(e.target.value)}
+                                className="w-full px-2 py-1 border rounded"
+                                placeholder="New filename"
+                              />
+                              <div className="flex justify-end mt-2 space-x-2">
+                                <button
+                                  onClick={() => handleRename(file.filename, newFilename)}
+                                  className="px-2 py-1 text-sm text-white bg-blue-600 rounded hover:bg-blue-700"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setEditingFile(null);
+                                    setNewFilename("");
+                                  }}
+                                  className="px-2 py-1 text-sm text-gray-600 bg-gray-200 rounded hover:bg-gray-300"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-2 flex items-center justify-between">
+                              <p className="text-sm truncate">{file.filename}</p>
+                              <button
+                                onClick={() => {
+                                  setEditingFile(file.filename);
+                                  setNewFilename(file.filename);
+                                }}
+                                className="p-1 text-gray-500 hover:text-gray-700"
+                              >
+                                <PencilIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
                           <p className="text-xs text-gray-500">{file.status}</p>
                         </div>
                       ))}
